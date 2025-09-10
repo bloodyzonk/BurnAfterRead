@@ -1,0 +1,159 @@
+body {
+  font-family: system-ui, sans-serif;
+  background: #121212;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  color: #eee;
+}
+
+.container {
+  max-width: 60%;
+  width: 100%;
+  margin: 2rem;
+}
+
+h1 {
+  text-align: center;
+  font-size: 1.8rem;
+  margin-bottom: 1rem;
+  color: #ff4c4c;
+  /* 🔥 strong warning red */
+  letter-spacing: 1px;
+}
+
+.card {
+  background: #1e1e1e;
+  padding: 1.5rem;
+  border-radius: 8px;
+  border: 1px solid #333;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+
+label {
+  font-weight: 600;
+  display: block;
+  margin: 1rem 0 0.3rem;
+  color: #ffcc80;
+  /* amber for contrast */
+}
+
+.label-style {
+  font-weight: 600;
+  display: block;
+  margin: 1rem 0 0.3rem;
+  color: #ffcc80;
+  /* amber for contrast */
+}
+
+textarea,
+input[type="number"],
+input[type="file"],
+input[type="text"] {
+  width: 100%;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 1rem;
+  background: #2b2b2b;
+  color: #eee;
+}
+
+textarea {
+  resize: vertical;
+}
+
+button {
+  margin-top: 1.2rem;
+  width: 100%;
+  padding: 0.75rem;
+  background: linear-gradient(90deg, #ff4c4c, #ff884c);
+  color: white;
+  font-size: 1rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+button:hover {
+  opacity: 0.85;
+}
+
+#result {
+  text-align: center;
+  font-size: 1.1rem;
+  margin-top: 1rem;
+  color: #ffcc80;
+}
+
+#result a {
+  color: #ff884c;
+  word-break: break-all;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+#result a:hover {
+  text-decoration: underline;
+}
+
+select {
+  width: 100%;
+  padding: 0.6rem;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background: #2b2b2b;
+  color: #eee;
+  font-size: 1rem;
+}
+
+a {
+  text-decoration: none;
+  /* remove underline */
+  color: inherit;
+  /* inherit text color */
+  cursor: pointer;
+  /* keep pointer cursor for links */
+}
+
+a:hover {
+  text-decoration: none;
+  /* no underline on hover */
+  color: inherit;
+  /* optional: keep hover color same */
+}
+
+#file-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+#file-list li {
+  margin: 0.5rem 0;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.25em 0.6em;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1;
+  color: #fff;
+  background-color: #ff4c4c;
+  /* burn-red */
+  border-radius: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.badge.success {
+  background-color: #ffcc80;
+  /* amber for success */
+  color: #1e1e1e;
+  /* dark text for contrast */
+}
