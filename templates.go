@@ -18,9 +18,20 @@ const indexHTML = `<!DOCTYPE html>
 
       <label for="ttl">Time to live</label>
 			<select id="ttl">
-				<option value="3600">1 hour</option>
-				<option value="86400" selected>24 hours</option>
-				<option value="604800">1 week</option>
+        {{$found := false}}
+    
+        {{range .TTLOptions}}
+            <option value="{{.Value}}" {{if eq .Value $.SelectedTTL}}selected{{$found = true}}{{end}}>
+                {{.Label}}
+            </option>
+        {{end}}
+
+        {{/* Falls der Wert in keiner der obigen Optionen vorkam: */}}
+        {{if not $found}}
+            <option value="{{.SelectedTTL}}" selected>
+                Custom ({{.SelectedTTL}} seconds)
+            </option>
+        {{end}}
 			</select>
 
       <label for="files">Attach files</label>

@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"html/template"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -17,9 +18,16 @@ var styleCSS string
 var cryptoJS string
 
 type Server struct {
-	db        *sql.DB
-	tmplIndex *template.Template
-	tmplShow  *template.Template
+	db         *sql.DB
+	defaultTTL int
+	maxUpload  int64
+	tmplIndex  *template.Template
+	tmplShow   *template.Template
+}
+
+type TTLOption struct {
+	Value int
+	Label string
 }
 
 func securityHeaders(next http.Handler) http.Handler {
@@ -33,11 +41,13 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-func NewServer(db *sql.DB) *Server {
+func NewServer(db *sql.DB, config *Config) *Server {
 	return &Server{
-		db:        db,
-		tmplIndex: template.Must(template.New("index").Parse(indexHTML)),
-		tmplShow:  template.Must(template.New("show").Parse(showHTML)),
+		db:         db,
+		defaultTTL: config.DefaultTTL,
+		maxUpload:  config.MaxUploadSize,
+		tmplIndex:  template.Must(template.New("index").Parse(indexHTML)),
+		tmplShow:   template.Must(template.New("show").Parse(showHTML)),
 	}
 }
 
@@ -63,13 +73,25 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	// _ = s.tmplIndex.Execute(w, nil)
-	_ = s.tmplIndex.Execute(w, struct {
-		Style  template.CSS
-		Script template.JS
+	err := s.tmplIndex.Execute(w, struct {
+		Style       template.CSS
+		Script      template.JS
+		TTLOptions  []TTLOption
+		SelectedTTL int
 	}{
 		Style:  template.CSS(styleCSS),
 		Script: template.JS(cryptoJS),
+		TTLOptions: []TTLOption{
+			{Value: 3600, Label: "1 hour"},
+			{Value: 86400, Label: "1 day"},
+			{Value: 604800, Label: "1 week"},
+		},
+		SelectedTTL: s.defaultTTL,
 	})
+	if err != nil {
+		log.Println("template error:", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}
 }
 
 func (s *Server) handleShow(w http.ResponseWriter, r *http.Request) {
@@ -78,8 +100,8 @@ func (s *Server) handleShow(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	// _ = s.tmplShow.Execute(w, struct{ ID string }{ID: id})
-	_ = s.tmplShow.Execute(w, struct {
+
+	err := s.tmplShow.Execute(w, struct {
 		Style  template.CSS
 		Script template.JS
 		ID     string
@@ -88,10 +110,15 @@ func (s *Server) handleShow(w http.ResponseWriter, r *http.Request) {
 		Script: template.JS(cryptoJS),
 		ID:     id,
 	})
+	if err != nil {
+		log.Println("template error:", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}
 }
 
 func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10MB
+	// r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10MB
+	r.Body = http.MaxBytesReader(w, r.Body, s.maxUpload)
 
 	var req struct {
 		Ciphertext string `json:"ciphertext"`
