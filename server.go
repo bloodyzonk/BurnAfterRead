@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"html/template"
 	"log"
+	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -18,11 +20,14 @@ var styleCSS string
 var cryptoJS string
 
 type Server struct {
-	db         *sql.DB
-	defaultTTL int
-	maxUpload  int64
-	tmplIndex  *template.Template
-	tmplShow   *template.Template
+	db             *sql.DB
+	defaultTTL     int
+	maxUpload      int64
+	tmplIndex      *template.Template
+	tmplShow       *template.Template
+	anonymizeIP    bool
+	TrustedProxies []*net.IPNet
+	logger         *slog.Logger
 }
 
 type TTLOption struct {
@@ -41,14 +46,66 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-func NewServer(db *sql.DB, config *Config) *Server {
-	return &Server{
-		db:         db,
-		defaultTTL: config.DefaultTTL,
-		maxUpload:  config.MaxUploadSize,
-		tmplIndex:  template.Must(template.New("index").Parse(indexHTML)),
-		tmplShow:   template.Must(template.New("show").Parse(showHTML)),
+func NewServer(db *sql.DB, config *Config, logger *slog.Logger) *Server {
+	var trustedNets []*net.IPNet
+	for _, cidr := range config.TrustedProxies {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			log.Fatalf("invalid CIDR in trusted proxies: %s", cidr)
+		}
+		trustedNets = append(trustedNets, ipNet)
 	}
+	return &Server{
+		db:             db,
+		defaultTTL:     config.DefaultTTL,
+		maxUpload:      config.MaxUploadSize,
+		anonymizeIP:    config.AnonymizeIP,
+		TrustedProxies: trustedNets,
+		tmplIndex:      template.Must(template.New("index").Parse(indexHTML)),
+		tmplShow:       template.Must(template.New("show").Parse(showHTML)),
+		logger:         logger,
+	}
+}
+
+func getClientIP(r *http.Request, trustedProxies []*net.IPNet, anonym bool) string {
+	remoteIPStr, _, _ := net.SplitHostPort(r.RemoteAddr)
+	remoteIP := net.ParseIP(remoteIPStr)
+
+	finalIP := remoteIPStr
+
+	// Trusted Proxy Check (IPv4 & IPv6) - Check if the remote IP is in any of the trusted proxy ranges
+	if len(trustedProxies) > 0 {
+		isTrusted := false
+		for _, ipNet := range trustedProxies {
+			if ipNet.Contains(remoteIP) {
+				isTrusted = true
+				break
+			}
+		}
+
+		if isTrusted {
+			if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+				ips := strings.Split(xff, ",")
+				finalIP = strings.TrimSpace(ips[0])
+			}
+		}
+	}
+
+	// Anonymization
+	if anonym {
+		parsedFinal := net.ParseIP(finalIP)
+		if parsedFinal == nil {
+			return "0.0.0.0"
+		}
+
+		if ipv4 := parsedFinal.To4(); ipv4 != nil {
+			return ipv4.Mask(net.CIDRMask(24, 32)).String()
+		}
+
+		return parsedFinal.Mask(net.CIDRMask(64, 128)).String()
+	}
+
+	return finalIP
 }
 
 func (s *Server) Handler() http.Handler {
@@ -89,9 +146,17 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		SelectedTTL: s.defaultTTL,
 	})
 	if err != nil {
-		log.Println("template error:", err)
+		s.logger.Error("template error", slog.String("error", err.Error()))
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
+	// log request path for debugging with ip and user agent
+	s.logger.Info("http request",
+		slog.String("method", r.Method),
+		slog.String("path", r.URL.Path),
+		slog.String("ip", getClientIP(r, s.TrustedProxies, s.anonymizeIP)),
+		slog.String("user_agent", r.UserAgent()),
+		slog.Int("status", 200), // Falls du den Status trackst
+	)
 }
 
 func (s *Server) handleShow(w http.ResponseWriter, r *http.Request) {
@@ -111,9 +176,17 @@ func (s *Server) handleShow(w http.ResponseWriter, r *http.Request) {
 		ID:     id,
 	})
 	if err != nil {
-		log.Println("template error:", err)
+		s.logger.Error("template error", slog.String("error", err.Error()))
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
+	// log request path for debugging with ip and user agent
+	s.logger.Info("http request",
+		slog.String("method", r.Method),
+		slog.String("path", r.URL.Path),
+		slog.String("ip", getClientIP(r, s.TrustedProxies, s.anonymizeIP)),
+		slog.String("user_agent", r.UserAgent()),
+		slog.Int("status", 200), // Falls du den Status trackst
+	)
 }
 
 func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
@@ -162,6 +235,14 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 		"expires_at":  expiresAt.Format(time.RFC3339),
 		"ttl_seconds": int(ttl.Seconds()),
 	})
+	// log request path for debugging with ip and user agent
+	s.logger.Info("http request",
+		slog.String("method", r.Method),
+		slog.String("path", r.URL.Path),
+		slog.String("ip", getClientIP(r, s.TrustedProxies, s.anonymizeIP)),
+		slog.String("user_agent", r.UserAgent()),
+		slog.Int("status", 200), // Falls du den Status trackst
+	)
 }
 
 func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
@@ -192,6 +273,14 @@ func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 		"nonce":      msg.Nonce,
 		"filename":   msg.Filename,
 	})
+	// log request path for debugging with ip and user agent
+	s.logger.Info("http request",
+		slog.String("method", r.Method),
+		slog.String("path", r.URL.Path),
+		slog.String("ip", getClientIP(r, s.TrustedProxies, s.anonymizeIP)),
+		slog.String("user_agent", r.UserAgent()),
+		slog.Int("status", 200), // Falls du den Status trackst
+	)
 }
 
 func (s *Server) StartCleanup() {
